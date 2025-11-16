@@ -1,42 +1,121 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Dart
+name: Build iOS IPA (Unsigned)
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - profile
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  build-ios-unsigned:
+    name: Build iOS IPA (Unsigned)
+    runs-on: macos-latest
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # Note: This workflow uses the latest stable version of the Dart SDK.
-      # You can specify other versions if desired, see documentation here:
-      # https://github.com/dart-lang/setup-dart/blob/main/README.md
-      # - uses: dart-lang/setup-dart@v1
-      - uses: dart-lang/setup-dart@9a04e6d73cca37bd455e0608d7e5092f881fd603
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
 
       - name: Install dependencies
-        run: dart pub get
+        working-directory: english_vocab_app
+        run: flutter pub get
 
-      # Uncomment this step to verify the use of 'dart format' on each commit.
-      # - name: Verify formatting
-      #   run: dart format --output=none --set-exit-if-changed .
+      - name: Verify Flutter setup
+        working-directory: english_vocab_app
+        run: flutter doctor -v
 
-      # Consider passing '--fatal-infos' for slightly stricter analysis.
-      - name: Analyze project source
-        run: dart analyze
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
 
-      # Your project will need to have tests in test/ and a dependency on
-      # package:test for this step to succeed. Note that Flutter projects will
-      # want to change this to 'flutter test'.
-      - name: Run tests
-        run: dart test
+      - name: Install CocoaPods dependencies
+        working-directory: english_vocab_app/ios
+        run: |
+          sudo gem install cocoapods
+          pod install
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+          BUILD_NUM=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "build_num=${BUILD_NUM}" >> $GITHUB_OUTPUT
+
+      - name: Build Release Archive
+        working-directory: english_vocab_app
+        run: |
+          flutter build ios --release \
+            --build-name=${{ steps.version.outputs.version }} \
+            --build-number=${{ steps.version.outputs.build_num }} \
+            --no-codesign
+
+      - name: Create unsigned IPA
+        working-directory: english_vocab_app
+        run: |
+          # Create a staging directory
+          STAGING_DIR="build/ios/staging"
+          mkdir -p "$STAGING_DIR"
+          
+          # Navigate to build directory
+          cd build/ios/Release-iphoneos
+          
+          # Create Payload directory
+          mkdir -p "$STAGING_DIR/Payload"
+          
+          # Copy the app to Payload
+          cp -r Runner.app "$STAGING_DIR/Payload/"
+          
+          # Create the IPA (which is just a ZIP file with specific structure)
+          cd "$STAGING_DIR"
+          zip -r "../ipa/english_vocab_app-unsigned.ipa" Payload/
+          
+          # Return to root
+          cd ../../../../
+
+      - name: List build artifacts
+        working-directory: english_vocab_app
+        run: |
+          echo "=== Build Output ==="
+          ls -la build/ios/ipa/ || echo "IPA directory not found"
+          ls -la build/ios/Release-iphoneos/ || echo "Release directory not found"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-unsigned
+          path: english_vocab_app/build/ios/ipa/*.ipa
+          retention-days: 30
+
+      - name: Upload to Release (if tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: english_vocab_app/build/ios/ipa/*.ipa
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
