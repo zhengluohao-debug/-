@@ -39,9 +39,11 @@ jobs:
           cache: true
 
       - name: Install dependencies
+        working-directory: english_vocab_app
         run: flutter pub get
 
       - name: Verify Flutter setup
+        working-directory: english_vocab_app
         run: flutter doctor -v
 
       - name: Setup Xcode
@@ -50,7 +52,7 @@ jobs:
           xcode-version: 'latest-stable'
 
       - name: Install CocoaPods dependencies
-        working-directory: ios
+        working-directory: english_vocab_app/ios
         run: |
           sudo gem install cocoapods
           pod install
@@ -64,6 +66,7 @@ jobs:
           echo "build_num=${BUILD_NUM}" >> $GITHUB_OUTPUT
 
       - name: Build Release Archive
+        working-directory: english_vocab_app
         run: |
           flutter build ios --release \
             --build-name=${{ steps.version.outputs.version }} \
@@ -71,6 +74,7 @@ jobs:
             --no-codesign
 
       - name: Create unsigned IPA
+        working-directory: english_vocab_app
         run: |
           # Create a staging directory
           STAGING_DIR="build/ios/staging"
@@ -93,6 +97,7 @@ jobs:
           cd ../../../../
 
       - name: List build artifacts
+        working-directory: english_vocab_app
         run: |
           echo "=== Build Output ==="
           ls -la build/ios/ipa/ || echo "IPA directory not found"
@@ -102,14 +107,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa-unsigned
-          path: build/ios/ipa/*.ipa
+          path: english_vocab_app/build/ios/ipa/*.ipa
           retention-days: 30
 
       - name: Upload to Release (if tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: build/ios/ipa/*.ipa
+          files: english_vocab_app/build/ios/ipa/*.ipa
           draft: false
           prerelease: false
         env:

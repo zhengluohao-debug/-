@@ -39,9 +39,11 @@ jobs:
           cache: true
 
       - name: Install dependencies
+        working-directory: english_vocab_app
         run: flutter pub get
 
       - name: Verify Flutter setup
+        working-directory: english_vocab_app
         run: flutter doctor -v
 
       - name: Setup Xcode
@@ -50,7 +52,7 @@ jobs:
           xcode-version: 'latest-stable'
 
       - name: Install CocoaPods dependencies
-        working-directory: ios
+        working-directory: english_vocab_app/ios
         run: |
           sudo gem install cocoapods
           pod install
@@ -89,7 +91,7 @@ jobs:
         run: echo "version=$(flutter --version | head -n 1 | cut -d ' ' -f 2)" >> $GITHUB_OUTPUT
 
       - name: Build IPA
-        working-directory: ios
+        working-directory: english_vocab_app/ios
         run: |
           flutter build ipa --release \
             --export-options-plist=ExportOptions.plist \
@@ -100,14 +102,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa
-          path: build/ios/ipa/*.ipa
+          path: english_vocab_app/build/ios/ipa/*.ipa
           retention-days: 30
 
       - name: Upload IPA to Release (if tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: build/ios/ipa/*.ipa
+          files: english_vocab_app/build/ios/ipa/*.ipa
           draft: false
           prerelease: false
         env:
